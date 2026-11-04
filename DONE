@@ -1,0 +1,1 @@
+issue-591-actcomp-matrix — matrix/failure-path tests added; targeted suite 261 passed, 1 skipped; 1% budget measured 0.00339/0.00340, over-budget fallback verified; full suite blocked by single-GPU/NPU-order failures documented in REPORT.md.
