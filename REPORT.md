@@ -40,6 +40,8 @@ env PYTHONPATH=$PWD .venv/bin/python -m pytest tests/test_kivi_edges.py -k cpu -
 # 23/30 tests collected (7 deselected)
 ```
 
+(`artifacts/logs/kivi_edges_cpu_collect.log`)
+
 ## 3. Decode attention kernel reproduction
 
 Command (README section 3, CUDA graph):
