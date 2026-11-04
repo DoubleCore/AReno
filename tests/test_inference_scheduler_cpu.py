@@ -24,7 +24,7 @@ class _FakeInferenceManager(InferenceManager):
         super().__init__(SimpleNamespace())
         self.device = torch.device("cpu")
         self.config = SimpleNamespace(
-            runtime=SimpleNamespace(speculative_draft_tokens=0), model=SimpleNamespace(vocab_size=8)
+            runtime=SimpleNamespace(speculative_draft_tokens=0, kv_cache_dtype="auto"), model=SimpleNamespace(vocab_size=8)
         )
         self.prefill_only_chunks = 0
         self.ops = []
@@ -203,7 +203,7 @@ def test_infer_cache_reuse_skips_weight_conversion_within_agentic_session():
     worker = SimpleNamespace(
         device=torch.device("cpu"),
         model=model,
-        config=SimpleNamespace(runtime=SimpleNamespace(speculative_draft_tokens=0)),
+        config=SimpleNamespace(runtime=SimpleNamespace(speculative_draft_tokens=0, kv_cache_dtype="auto")),
         _infer_cache_spec=(4, 8, 4, 16, 4),
         _infer_batch_size=4,
         _infer_cache_blocks=9,
