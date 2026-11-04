@@ -1,0 +1,1 @@
+issue-588-cce-gpu — GPU validation complete: 36 CCE tests pass on RTX 5880; CCE never allocates a full tokens×vocab block (max single alloc 128MB vs 256/512MB); Qwen3-0.6B peak allocated 22.0GB→18.1GB (-3.9GB, -17.8%) at +0.48% step time; GSPO public-Trainer update + save/resume green with native train/logp_abs_diff_mean 0.048248/0.043334/0.049003.

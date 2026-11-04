@@ -431,6 +431,45 @@ def test_config_defaults_keep_cut_cross_entropy_off():
     assert enabled.cuda_config().runtime["cut_cross_entropy"] is True
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU packed-head assertions require CUDA")
+@pytest.mark.parametrize(
+    ("dtype", "atol", "rtol", "check_grads"),
+    [
+        (torch.float32, 1e-5, 1e-5, True),
+        (torch.bfloat16, 5e-2, 1e-2, False),
+    ],
+)
+def test_packed_head_cut_cross_entropy_matches_full_projection_cuda(dtype, atol, rtol, check_grads):
+    """The CUDA deferred head agrees with the materialized full-vocab projection."""
+
+    torch.manual_seed(16)
+    device = torch.device("cuda")
+    head = nn.Linear(8, 37, bias=False, device=device, dtype=dtype)
+    reference_head = nn.Linear(8, 37, bias=False, device=device, dtype=dtype)
+    reference_head.load_state_dict(head.state_dict())
+    hidden = torch.randn(1, 13, 8, device=device, dtype=dtype, requires_grad=True)
+    reference_hidden = hidden.detach().clone().requires_grad_(True)
+    tokens = torch.randint(37, (1, 13), device=device)
+    cu = torch.tensor([0, 5, 13], device=device)
+
+    positions = torch.tensor([0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11], device=device)
+    labels = tokens.reshape(-1)[positions + 1]
+    expected = _reference_logprobs(
+        reference_hidden.reshape(-1, 8).index_select(0, positions), reference_head.weight, labels
+    )
+    upstream = torch.linspace(-1.0, 1.0, expected.numel(), device=device)
+    (expected * upstream).sum().backward()
+
+    with PatchedContext(logprob_ops, get_tp_context=single_tp_context):
+        actual = logprob_ops.packed_next_token_logprobs_from_hidden(hidden, tokens, cu, head, cut_cross_entropy=True)
+    (actual * upstream).sum().backward()
+
+    torch.testing.assert_close(actual, expected, atol=atol, rtol=rtol)
+    if check_grads:
+        torch.testing.assert_close(hidden.grad, reference_hidden.grad, atol=atol, rtol=rtol)
+        torch.testing.assert_close(head.weight.grad, reference_head.weight.grad, atol=atol, rtol=rtol)
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="peak-memory assertions require CUDA")
 def test_peak_memory_below_materialized_logits_cuda():
     torch.manual_seed(14)

@@ -97,29 +97,70 @@ Reading the numbers:
   backward recompute. The payoff is memory, and on GPU the chunked reduction is
   where a fused kernel belongs.
 
-## GPU baseline (TODO — no GPU on the machine that produced this report)
+## GPU baseline — RTX 5880 Ada 48 GB, CUDA 12.8, torch 2.8.0+cu128
 
-This issue is a first landing on a host without CUDA, so GPU numbers are not
-recorded here yet. Fill this table with a CUDA host using the protocol below.
+Measured on a single RTX 5880 Ada (sm_89, 48 GB) with `bf16`,
+`torch.backends.cuda.matmul.allow_tf32=false`, seed 0. Command logs and the
+full report live in `artifacts/logs/` and `REPORT.md` at the repository root.
 
-Protocol:
+`tests/test_cut_cross_entropy.py` (36 passed, including the CUDA peak-memory
+and CUDA packed-head tests that skip on CPU):
 
-1. `torch.cuda.empty_cache(); torch.cuda.reset_peak_memory_stats()` before each
-   run, and read `torch.cuda.max_memory_allocated() - base` after
-   `loss.backward()`.
-2. Compare `F.cross_entropy(hidden @ weight.T, targets)` against
-   `cut_cross_entropy(..., vocab_chunk_size=<candidate>)`.
-3. `tests/test_cut_cross_entropy.py::test_peak_memory_below_materialized_logits_cuda`
-   already asserts `cce_peak < materialized_peak / 2`; run it first.
+```bash
+PYTHONPATH=. CUDA_VISIBLE_DEVICES=0 python -m pytest tests/test_cut_cross_entropy.py -v
+```
 
-| model / shape | dtype | tp | path | step time ms | peak allocated GB | loss |
-| --- | --- | --- | --- | --- | --- | --- |
-| TODO | bf16 | 1 | materialized | TODO | TODO | TODO |
-| TODO | bf16 | 1 | cut cross-entropy (chunk=4096) | TODO | TODO | TODO |
+Numerical agreement at full vocabulary (`tokens=4096 hidden=1024 vocab=151936
+chunk=4096`, reference `F.cross_entropy(hidden @ weight.T, targets)`):
 
-Also worth recording on GPU: the chunk-size sweep (1024 / 4096 / 8192) because
-peak memory scales with `rows * vocab_chunk` and step time with
-`vocab / vocab_chunk` matmuls.
+| dtype | max abs | mean abs | max rel | mean rel | scalar loss rel diff |
+| --- | --- | --- | --- | --- | --- |
+| FP32 | 1.678e-04 | 1.360e-05 | 2.121e-06 | 1.065e-07 | 1.071e-07 |
+| BF16 | 8.452e-01 | 3.742e-02 | 1.173e-02 | 2.950e-04 | 9.508e-07 |
+
+99.98% of BF16 rows are inside the pinned `rtol=1e-2`; the aggregate loss
+agrees to `9.5e-7` relative because CCE accumulates in FP32 while the reference
+rounds the materialized logits to BF16.
+
+Synthetic output head (`tokens=4096 hidden=1024`, bf16, forward+backward,
+warmup 2 + 10 iterations). `max single alloc` is the largest single CUDA
+allocation recorded by `torch.cuda.memory._record_memory_history`; a full
+`tokens x vocab` tensor would appear there as one block:
+
+| vocab | path | fwd+bwd median ms | peak alloc delta MB | max single alloc MB | full logits block MB |
+| --- | --- | --- | --- | --- | --- |
+| 32768 | materialized | 7.21 | 768.0 | 256.0 | 256.0 |
+| 32768 | cut cross-entropy (chunk 4096) | 23.16 | 344.3 | 128.0 | 256.0 |
+| 65536 | materialized | 15.73 | 1536.0 | 512.0 | 512.0 |
+| 65536 | cut cross-entropy (chunk 4096) | 51.75 | 408.6 | 128.0 | 512.0 |
+
+The CCE path never requests one full logits block (the largest single
+allocation measured is 128 MB, below the 256/512 MB block), and its
+peak-allocated delta is 2.2x / 3.8x lower
+than the materialized path. 65536-token vocabulary chunk sweep (median ms):
+1024 -> 85.83, 2048 -> 56.76, 4096 -> 51.75, 8192 -> 57.20; peak delta
+268 / 273 / 409 / 680 MB.
+
+Real Qwen3-0.6B full training step (`/home/ps/models/Qwen3-0.6B`, bf16, seed 0,
+lr 1e-4, packed 8192 tokens / context 8192, MST chunk 256, 2 warmup + 10
+measured steps, `attn_backend=native`; step includes SFT loss, backward,
+FP32 main-gradient folding and AdamW update):
+
+| path | step mean ms | tok/s | peak allocated MB | peak alloc delta MB | max reserved MB |
+| --- | --- | --- | --- | --- | --- |
+| materialized logits | 8320.5 | 985 | 22039.1 | 12201.9 | 22550.0 |
+| deferred head (engine default, chunk 256) | 8175.1 | 1002 | 18111.9 | 8270.3 | 19772.0 |
+| cut cross-entropy (chunk 4096) | 8360.6 | 980 | 18107.2 | 8269.8 | 19954.0 |
+
+CCE cuts 3.9 GB of peak allocated memory (-17.8% total, -32.2% incremental head
+memory) at +0.48% step time versus materialized logits. It matches the existing
+deferred-head peak and is 2.3% slower than it; this reference implementation's
+remaining opportunity is a fused kernel, which is the follow-up below.
+
+Public `Trainer` end-to-end (GSPO + `--cut-cross-entropy`, GSM8K, one GPU,
+2 steps + save + 1-step resume) is recorded in `REPORT.md`: native
+`train/logp_abs_diff_mean` was 0.048248 / 0.043334 on the two steps and
+0.049003 on the resumed step, with non-zero `grad_norm` on the updating steps.
 
 ## Follow-ups
 
