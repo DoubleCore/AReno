@@ -250,6 +250,7 @@ class SavedActivationStats:
     kept_bytes: int = 0
     workspace_bytes: int = 0
     plan_misses: int = 0
+    oom_fallback_slots: int = 0
 
     @property
     def stored_bytes(self) -> int:
@@ -271,6 +272,7 @@ class SavedActivationStats:
             "actc_workspace_bytes": float(self.workspace_bytes),
             "actc_stored_fraction": self.stored_bytes / saved,
             "actc_plan_misses": float(self.plan_misses),
+            "actc_oom_fallback_slots": float(self.oom_fallback_slots),
         }
 
 
@@ -356,15 +358,32 @@ class _Capture:
             handle: Any = tensor
             stats.kept_bytes += tensor.numel() * tensor.element_size()
         else:
-            with torch.no_grad():
-                handle = quantize(
-                    tensor.detach(), bits, stochastic=self.stochastic, seed=self.seed * 1_000_003 + slot * 7919
+            try:
+                with torch.no_grad():
+                    handle = quantize(
+                        tensor.detach(), bits, stochastic=self.stochastic, seed=self.seed * 1_000_003 + slot * 7919
+                    )
+            except (torch.cuda.OutOfMemoryError, MemoryError):
+                # Packing needs a workspace on top of the saved tensor. If the
+                # allocation fails, keep the original instead of failing the
+                # training step: compression is an optimization, not a
+                # correctness requirement.
+                logger.warning(
+                    "activation compression: out of memory packing slot %d (%d elements); keeping it uncompressed",
+                    slot,
+                    tensor.numel(),
                 )
-            stats.compressed_slots += 1
-            stats.packed_bytes += handle.packed_bytes
-            stats.scale_bytes += handle.scale_bytes
-            stats.outlier_bytes += handle.outlier_bytes
-            stats.workspace_bytes = max(stats.workspace_bytes, tensor.numel() * tensor.element_size())
+                if tensor.device.type == "cuda":
+                    torch.cuda.empty_cache()
+                stats.oom_fallback_slots += 1
+                handle = tensor
+                stats.kept_bytes += tensor.numel() * tensor.element_size()
+            else:
+                stats.compressed_slots += 1
+                stats.packed_bytes += handle.packed_bytes
+                stats.scale_bytes += handle.scale_bytes
+                stats.outlier_bytes += handle.outlier_bytes
+                stats.workspace_bytes = max(stats.workspace_bytes, tensor.numel() * tensor.element_size())
         self.cache[key] = (weakref.ref(tensor), handle)
         return handle
 
