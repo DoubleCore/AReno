@@ -29,7 +29,7 @@ env PYTHONPATH=$PWD CUDA_VISIBLE_DEVICES=0 .venv/bin/python -m pytest \
   tests/test_kivi_kv_cache_cpu.py tests/test_kivi_kv_cache_cuda.py tests/test_kivi_edges.py -q
 ```
 
-Result: `91 passed, 1 warning in 22.27s` (`artifacts/logs/` — reproduced live).
+Result: `91 passed, 1 warning in 12.61s` (`artifacts/logs/kivi_tests.log`).
 The two PR files alone give the same 61 passes the PR README reports
 (36 CPU + 25 CUDA); the new edge file adds 30 tests (23 CPU, 7 CUDA).
 

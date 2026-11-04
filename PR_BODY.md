@@ -38,7 +38,7 @@ Once #641 merges, this branch can be rebased to drop the mirror commit.
 ```bash
 env PYTHONPATH=$PWD CUDA_VISIBLE_DEVICES=0 .venv/bin/python -m pytest \
   tests/test_kivi_kv_cache_cpu.py tests/test_kivi_kv_cache_cuda.py tests/test_kivi_edges.py -q
-# 91 passed, 1 warning in 22.27s
+# 91 passed, 1 warning in 12.61s
 ```
 
 The two PR test files alone give 61 passes, matching the PR README (36 CPU +
