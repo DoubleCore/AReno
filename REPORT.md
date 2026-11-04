@@ -2,7 +2,9 @@
 
 Branch: `issue-588-cce-gpu`, cut from PR #657's `issue-588-cce` at
 `eaaae93ea16f29970ddec19ff0bd7511bd6d6cb9` (`feat(accel): add opt-in
-cut cross-entropy LM-head path (#588)`). This branch only adds GPU tests,
+cut cross-entropy LM-head path (#588)`). The GPU-validation commit on this
+branch is `1bdc611` (`test(accel): add CUDA validation and GPU benchmarks for
+cut cross-entropy (#588)`). This branch only adds GPU tests,
 the real-machine benchmark script, the README GPU table and this report; the
 CCE arithmetic, the default-off frontend switch and the explicit
 `NotImplementedError`s are unchanged.
