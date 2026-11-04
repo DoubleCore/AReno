@@ -1,0 +1,1 @@
+issue-592-shared-kv-tests — 19 shared-KV tests pass on PR #639 head; BF16 matrix 1024/4096 x 1/4/8 and FP32 1024/4096 all match exactly (max abs logprob error 0); 4096x8 peak allocated 15.30→12.23 GiB, live full-prompt blocks 128→16; current-main merge drifts documented in REPORT.md.
