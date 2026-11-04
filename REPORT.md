@@ -10,6 +10,7 @@ All numbers below come from this worktree's real runs. Raw logs live under
 | Repository | `/home/ps/LHL/worktrees/issue-590`, branch `issue-590-kivi-repro` |
 | Base commit | `db3dbdf feat(models): add native GPT-OSS-20B support (#655)` |
 | PR #641 mirror | `2464022 chore(kivi): vendor PR #641 implementation as reproduction base` |
+| Edge tests + guards | `8fce1d9 test(kivi): add boundary regression suite and CUDA/GQA guards` |
 | PR #641 source | `EricChan2028/AReno:kivi-590`, head `d442c65165eefde424586f32ab317b5e304eb5e9`, open/unmerged |
 | GPU | NVIDIA RTX 5880 Ada Generation, 48 GiB, `sm_89`, driver 580.173.02 |
 | Software | Python 3.12, torch 2.8.0+cu128, CUDA 12.8, triton 3.4.0, flash-attn 2.8.3.post2, transformers 5.22.1, datasets 4.0.0, numpy 2.5.4, pytest 9.2.0 |
@@ -232,9 +233,12 @@ Two guards were added to the PR implementation to make these cases fail cleanly:
   temporary patch; this is an example-script memory issue on a 48 GiB GPU,
   not a KIVI kernel failure. The unmodified run's OOM is in
   `artifacts/logs/repro_decode_graph_missing.log`.
-* Full `pytest tests -k cpu` is run for regression; KIVI-specific suites are
-  all green. See `artifacts/logs/full_cpu_tests.log` for the repository-wide
-  result and any pre-existing failures.
+* Full `pytest tests -k cpu` was run for regression: `15 failed, 1912 passed,
+  73 skipped ... in 216.45s` (`artifacts/logs/full_cpu_tests.log`). None of
+  the failures touch KIVI; they are `test_config_data_cpu` device-visibility
+  assertions under this host's `CUDA_VISIBLE_DEVICES`, unrelated MoE
+  `tokenwise` API drift, an optimizer test, and the known real-gloo failures.
+  The KIVI-specific suites are all green (91 passed).
 
 ## 9. Reproduce here
 
