@@ -1,0 +1,1 @@
+issue-590-kivi-repro: PR #641 reproduced on RTX 5880 Ada 48GB (91 KIVI tests green; WikiText 4x16384 KIVI-2 0.197x / KIVI-4 0.322x BF16 memory and quality match PR); no push.

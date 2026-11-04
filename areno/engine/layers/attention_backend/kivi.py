@@ -92,6 +92,11 @@ class KiviKVCache:
         device: torch.device,
     ) -> KiviKVCache:
         validate_kivi_geometry(spec, block_size=block_size, head_dim=head_dim)
+        if device.type != "cuda" or not torch.cuda.is_available():
+            raise RuntimeError(
+                "KIVI KV cache requires a CUDA device; set runtime.kv_cache_dtype='auto' "
+                "on CPU/NPU hosts instead of requesting KIVI storage"
+            )
         packed = head_dim * spec.bits // 8
         group = spec.group_size
 
@@ -355,6 +360,16 @@ class KiviInferBackend(nn.Module):
         q_flat = q.reshape(-1, q.shape[-2], q.shape[-1])
         k_flat = k.reshape(-1, k.shape[-2], k.shape[-1])
         v_flat = v.reshape(-1, v.shape[-2], v.shape[-1])
+        if q_flat.shape[-1] != cache.head_dim or k_flat.shape[-1] != cache.head_dim:
+            raise ValueError(
+                f"KIVI cache head_dim {cache.head_dim} does not match Q/K head dims "
+                f"{q_flat.shape[-1]} and {k_flat.shape[-1]}"
+            )
+        if q_flat.shape[1] % cache.num_kv_heads:
+            raise ValueError(
+                f"KIVI GQA needs query heads divisible by KV heads, got {q_flat.shape[1]} "
+                f"query heads and {cache.num_kv_heads} KV heads"
+            )
         if meta.mode == "prefill":
             out = self._prefill(q, k, v, q_flat, k_flat, v_flat, cache, meta, scale)
         elif meta.mode == "decode":
