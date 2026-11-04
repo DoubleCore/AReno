@@ -67,7 +67,8 @@ env PYTHONPATH=$PWD CUDA_VISIBLE_DEVICES=0 \
 ```
 
 Reference is `F.cross_entropy(hidden @ weight.T, targets)`; per-row values use
-`reduction="none"`.
+`reduction="none"`. The pinned test tolerances are `atol=rtol=1e-5` for FP32
+and `rtol=1e-2` for BF16.
 
 | dtype | max abs | mean abs | max rel | mean rel |
 | --- | --- | --- | --- | --- |
